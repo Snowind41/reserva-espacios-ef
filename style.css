@@ -1,0 +1,28 @@
+* { box-sizing: border-box; }
+body { margin: 0; font-family: system-ui, sans-serif; background: #f2f4f8; color: #222; }
+header { background: #1565c0; color: #fff; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; }
+header h1 { font-size: 1.2rem; margin: 0; }
+#usuario { font-size: .85rem; cursor: pointer; text-decoration: underline; }
+.controles { display: flex; gap: 10px; padding: 12px; flex-wrap: wrap; }
+.controles label { display: flex; flex-direction: column; font-size: .8rem; flex: 1; min-width: 140px; }
+.controles input, .controles select { padding: 10px; font-size: 1rem; border: 1px solid #bbb; border-radius: 8px; }
+.estado { padding: 0 12px; font-size: .8rem; color: #b71c1c; }
+main { padding: 0 12px 24px; }
+.espacio { background: #fff; border-radius: 12px; margin-bottom: 12px; box-shadow: 0 1px 4px rgba(0,0,0,.12); overflow: hidden; }
+.espacio h3 { margin: 0; padding: 12px 14px; background: #e3eaf5; font-size: 1rem; }
+.franja { display: flex; justify-content: space-between; align-items: center; padding: 12px 14px; border-top: 1px solid #eee; font-size: .95rem; }
+.franja.libre { background: #e8f5e9; cursor: pointer; }
+.franja.ocupada { background: #ffebee; }
+.franja.mia { background: #fff3e0; }
+.franja.bloqueada { background: #eceff1; color: #777; }
+.franja .hora { font-weight: 600; }
+.franja button { padding: 6px 10px; border: 0; border-radius: 6px; background: #c62828; color: #fff; }
+.modal { position: fixed; inset: 0; background: rgba(0,0,0,.5); display: flex; align-items: center; justify-content: center; padding: 16px; }
+.modal.oculto { display: none; }
+.modal-contenido { background: #fff; padding: 20px; border-radius: 12px; width: 100%; max-width: 360px; }
+.modal-contenido label { display: flex; flex-direction: column; margin-top: 10px; font-size: .85rem; }
+.modal-contenido input { padding: 10px; font-size: 1rem; border: 1px solid #bbb; border-radius: 8px; }
+.botones { display: flex; gap: 10px; margin-top: 16px; }
+.botones button { flex: 1; padding: 12px; font-size: 1rem; border: 0; border-radius: 8px; background: #1565c0; color: #fff; }
+.botones .secundario { background: #cfd8dc; color: #222; }
+.toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #323232; color: #fff; padding: 12px 18px; border-radius: 24px; font-size: .9rem; z-index: 10; }

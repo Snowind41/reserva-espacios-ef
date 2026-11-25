@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#1565c0">
+<link rel="manifest" href="manifest.json">
+<title>Reserva de espacios EF</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>🏟️ Espacios EF</h1>
+  <div id="usuario"></div>
+</header>
+
+<section class="controles">
+  <label>Día
+    <input type="date" id="fecha">
+  </label>
+  <label>Etapa
+    <select id="etapa">
+      <option value="eso">ESO / Bachillerato (55 min)</option>
+      <option value="primaria">Primaria (60 min)</option>
+    </select>
+  </label>
+</section>
+
+<div id="estado" class="estado"></div>
+<main id="espacios"></main>
+
+<div id="modal" class="modal oculto">
+  <div class="modal-contenido">
+    <h2 id="modal-titulo"></h2>
+    <p id="modal-detalle"></p>
+    <label>Grupo / clase
+      <input type="text" id="grupo" placeholder="Ej: 3º ESO B">
+    </label>
+    <div class="botones">
+      <button id="btn-cancelar" class="secundario">Cancelar</button>
+      <button id="btn-reservar">Reservar</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
