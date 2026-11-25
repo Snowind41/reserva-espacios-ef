@@ -1,186 +1,55 @@
-// ===== Espacios =====
-// 'bloquea' indica qué otros espacios quedan ocupados al reservar este.
-const ESPACIOS = [
-  { id: 'tatami1', nombre: 'Tatami 1', bloquea: [] },
-  { id: 'tatami2', nombre: 'Tatami 2', bloquea: [] },
-  { id: 'gimnasio', nombre: 'Gimnasio', bloquea: [] },
-  { id: 'pistaExterior', nombre: 'Pista exterior', bloquea: [] },
-  { id: 'soportales', nombre: 'Soportales (ping-pong)', bloquea: [] },
-  { id: 'pabellon', nombre: 'Pabellón completo', bloquea: ['pabellonA', 'pabellonB'] },
-  { id: 'pabellonA', nombre: 'Pabellón mitad A', bloquea: ['pabellon'] },
-  { id: 'pabellonB', nombre: 'Pabellón mitad B', bloquea: ['pabellon'] },
-  { id: 'padel1', nombre: 'Pádel 1', bloquea: [] },
-  { id: 'padel2', nombre: 'Pádel 2', bloquea: [] },
-  { id: 'futbol', nombre: 'Campo de fútbol', bloquea: [] }
-];
-
-// ===== Franjas: de 9:00 a 17:00 =====
-function generarFranjas(minutos) {
-  const franjas = [];
-  let t = 9 * 60;
-  const fin = 17 * 60;
-  while (t + minutos <= fin) {
-    franjas.push({ inicio: t, fin: t + minutos });
-    t += minutos;
-  }
-  return franjas;
-}
-function hhmm(m) {
-  return String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');
-}
-
-// ===== Estado =====
-let reservas = {};
-let db = null;
-let usuario = localStorage.getItem('usuarioEF') || '';
-let seleccion = null;
-
-const $ = id => document.getElementById(id);
-
-function pedirNombre() {
-  const n = prompt('¿Cómo te llamas? (se mostrará a tus compañeros)', usuario);
-  if (n && n.trim()) {
-    usuario = n.trim();
-    localStorage.setItem('usuarioEF', usuario);
-  }
-  $('usuario').textContent = '👤 ' + (usuario || 'Identifícate');
-}
-
-function toast(msg) {
-  const t = document.createElement('div');
-  t.className = 'toast';
-  t.textContent = msg;
-  document.body.appendChild(t);
-  setTimeout(() => t.remove(), 4000);
-}
-
-function clave(fecha, espacio, inicio) {
-  return fecha + '_' + espacio + '_' + inicio;
-}
-
-// Devuelve la reserva que afecta a un espacio en una franja (directa o por bloqueo)
-function buscarReserva(fecha, espacioId, inicio, fin) {
-  const resultados = Object.values(reservas).filter(r => r.fecha === fecha && r.inicio < fin && r.fin > inicio);
-  for (const r of resultados) {
-    if (r.espacio === espacioId) return { reserva: r, directa: true };
-    const def = ESPACIOS.find(e => e.id === r.espacio);
-    if (def && def.bloquea.includes(espacioId)) return { reserva: r, directa: false };
-  }
-  return null;
-}
-
-function pintar() {
-  const fecha = $('fecha').value;
-  const minutos = $('etapa').value === 'primaria' ? 60 : 55;
-  const franjas = generarFranjas(minutos);
-  const cont = $('espacios');
-  cont.innerHTML = '';
-
-  ESPACIOS.forEach(esp => {
-    const div = document.createElement('div');
-    div.className = 'espacio';
-    div.innerHTML = '<h3>' + esp.nombre + '</h3>';
-    franjas.forEach(f => {
-      const fila = document.createElement('div');
-      const hora = hhmm(f.inicio) + ' - ' + hhmm(f.fin);
-      const info = buscarReserva(fecha, esp.id, f.inicio, f.fin);
-      if (!info) {
-        fila.className = 'franja libre';
-        fila.innerHTML = '<span class="hora">' + hora + '</span><span>Libre</span>';
-        fila.onclick = () => abrirModal(esp, f, hora);
-      } else {
-        const r = info.reserva;
-        const mia = r.profesor === usuario;
-        fila.className = 'franja ' + (info.directa ? (mia ? 'mia' : 'ocupada') : 'bloqueada');
-        const texto = info.directa
-          ? r.profesor + ' · ' + r.grupo
-          : 'Bloqueado (' + ESPACIOS.find(e => e.id === r.espacio).nombre + ': ' + r.profesor + ')';
-        fila.innerHTML = '<span class="hora">' + hora + '</span><span>' + texto + '</span>';
-        if (info.directa && mia) {
-          const b = document.createElement('button');
-          b.textContent = 'Anular';
-          b.onclick = ev => { ev.stopPropagation(); anular(r); };
-          fila.appendChild(b);
-        }
-      }
-      div.appendChild(fila);
-    });
-    cont.appendChild(div);
-  });
-}
-
-function abrirModal(esp, f, hora) {
-  if (!usuario) { pedirNombre(); if (!usuario) return; }
-  seleccion = { esp, f };
-  $('modal-titulo').textContent = esp.nombre;
-  $('modal-detalle').textContent = $('fecha').value + ' · ' + hora;
-  $('grupo').value = '';
-  $('modal').classList.remove('oculto');
-}
-
-function cerrarModal() {
-  $('modal').classList.add('oculto');
-  seleccion = null;
-}
-
-function reservar() {
-  const grupo = $('grupo').value.trim();
-  if (!grupo) { alert('Escribe el grupo o clase'); return; }
-  const fecha = $('fecha').value;
-  const { esp, f } = seleccion;
-  // Comprobación final por si alguien reservó justo antes
-  if (buscarReserva(fecha, esp.id, f.inicio, f.fin)) {
-    alert('Esa franja acaba de ser reservada por otra persona.');
-    cerrarModal();
-    return;
-  }
-  const id = clave(fecha, esp.id, f.inicio);
-  db.ref('reservas/' + id).set({
-    fecha, espacio: esp.id, inicio: f.inicio, fin: f.fin,
-    profesor: usuario, grupo, creada: Date.now()
-  });
-  cerrarModal();
-}
-
-function anular(r) {
-  if (!confirm('¿Anular tu reserva de ' + ESPACIOS.find(e => e.id === r.espacio).nombre + '?')) return;
-  db.ref('reservas/' + clave(r.fecha, r.espacio, r.inicio)).remove();
-}
-
-function iniciar() {
-  const hoy = new Date();
-  $('fecha').value = hoy.getFullYear() + '-' + String(hoy.getMonth() + 1).padStart(2, '0') + '-' + String(hoy.getDate()).padStart(2, '0');
-  $('fecha').onchange = pintar;
-  $('etapa').onchange = pintar;
-  $('usuario').onclick = () => { pedirNombre(); pintar(); };
-  $('btn-cancelar').onclick = cerrarModal;
-  $('btn-reservar').onclick = reservar;
-  $('usuario').textContent = '👤 ' + (usuario || 'Identifícate');
-
-  if (firebaseConfig.apiKey.startsWith('PEGA_AQUI')) {
-    $('estado').textContent = '⚠️ Falta configurar Firebase (archivo config.js). Mira el README.';
-    pintar();
-    return;
-  }
-
-  firebase.initializeApp(firebaseConfig);
-  db = firebase.database();
-  let primeraCarga = true;
-
-  db.ref('reservas').on('value', snap => {
-    reservas = snap.val() || {};
-    primeraCarga = false;
-    pintar();
-  });
-
-  // Aviso cuando un compañero hace una reserva nueva
-  db.ref('reservas').orderByChild('creada').startAt(Date.now()).on('child_added', snap => {
-    const r = snap.val();
-    if (r.profesor !== usuario) {
-      const nombre = ESPACIOS.find(e => e.id === r.espacio).nombre;
-      toast(r.profesor + ' ha reservado ' + nombre + ' el ' + r.fecha + ' de ' + hhmm(r.inicio) + ' a ' + hhmm(r.fin));
-    }
-  });
-}
-
-iniciar();
+// Espacios EF · aplicación sin dependencias de interfaz. El formato existente de Firebase se conserva.
+const ESPACIOS=[
+{id:'tatami1',nombre:'Tatami 1',tipo:'tatami',color:'#a9653a',tinte:'#f5e7d8',detalle:'Artes marciales · tatami'},
+{id:'tatami2',nombre:'Tatami 2',tipo:'tatami',color:'#a9653a',tinte:'#f5e7d8',detalle:'Artes marciales · tatami'},
+{id:'gimnasio',nombre:'Gimnasio',tipo:'gym',color:'#547a9a',tinte:'#e1edf3',detalle:'Zona piscina Bizola · fuerza y material'},
+{id:'pistaExterior',nombre:'Pista exterior polideportiva',tipo:'court',color:'#47906c',tinte:'#e1efe4',detalle:'Exterior · pista multideporte'},
+{id:'soportales',nombre:'Soportales (ping-pong)',tipo:'pingpong',color:'#b48246',tinte:'#f2ead7',detalle:'Mesa de ping-pong · soportales'},
+{id:'pabellon',nombre:'Pabellón completo',tipo:'pavilion',color:'#687c9b',tinte:'#e5eaf1',detalle:'Interior · pistas A y B'},
+{id:'pabellonA',nombre:'Pabellón mitad A',tipo:'halfA',color:'#687c9b',tinte:'#e5eaf1',detalle:'Interior · mitad A'},
+{id:'pabellonB',nombre:'Pabellón mitad B',tipo:'halfB',color:'#687c9b',tinte:'#e5eaf1',detalle:'Interior · mitad B'},
+{id:'padel1',nombre:'Pádel 1',tipo:'padel',color:'#438b83',tinte:'#e1efeb',detalle:'Pista de pádel · cristal'},
+{id:'padel2',nombre:'Pádel 2',tipo:'padel',color:'#438b83',tinte:'#e1efeb',detalle:'Pista de pádel · cristal'},
+{id:'futbol',nombre:'Campo de fútbol',tipo:'football',color:'#628b4d',tinte:'#e8eedb',detalle:'Exterior · campo de fútbol'}
+].map(e=>({...e,bloquea:e.id==='pabellon'?['pabellonA','pabellonB']:e.id==='pabellonA'||e.id==='pabellonB'?['pabellon']:[]}));
+const $=id=>document.getElementById(id), ST_LOCAL='reservasEF_local', ST_USER='usuarioEF', ST_GROUP='grupoEF';
+let reservas={},db=null,usuario=localStorage.getItem(ST_USER)||'',seleccion=null,modo='local',vista='spaces',selectedDate='',firstRemote=true;
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const pad=n=>String(n).padStart(2,'0');
+function dateKey(d){return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`}
+function parseDay(key){const [y,m,d]=key.split('-').map(Number);return new Date(y,m-1,d,12)}
+function hhmm(m){return `${pad(Math.floor(m/60))}:${pad(m%60)}`}
+function generarFranjas(min){const a=[];for(let t=540;t+min<=1020;t+=min)a.push({inicio:t,fin:t+min});return a}
+function toast(msg){const el=document.createElement('div');el.className='toast';el.innerHTML=msg;$('toasts').append(el);setTimeout(()=>el.remove(),5500)}
+function fechaBonita(key){return new Intl.DateTimeFormat('es-ES',{weekday:'long',day:'numeric',month:'long'}).format(parseDay(key))}
+function roomDef(id){return ESPACIOS.find(e=>e.id===id)}
+function buscarReserva(fecha,id,inicio,fin){const rs=Object.values(reservas).filter(r=>r&&r.fecha===fecha&&Number(r.inicio)<fin&&Number(r.fin)>inicio).sort((a,b)=>(a.creada||0)-(b.creada||0));for(const r of rs){if(r.espacio===id)return{reserva:r,directa:true};const def=roomDef(r.espacio);if(def?.bloquea.includes(id))return{reserva:r,directa:false}}return null}
+function conflicts(fecha,esp,f){return !!buscarReserva(fecha,esp.id,f.inicio,f.fin)||Object.values(reservas).some(r=>r&&r.fecha===fecha&&r.espacio===esp.id&&Number(r.inicio)<f.fin&&Number(r.fin)>f.inicio)}
+function countToday(esp){return Object.values(reservas).filter(r=>r&&r.fecha===dateKey(new Date())&&(r.espacio===esp.id||esp.bloquea.includes(r.espacio))).length}
+function art(type,half){const common='class="line" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"';
+const scenes={
+tatami:`<svg viewBox="0 0 340 125" aria-hidden="true"><rect class="scene-bg" width="340" height="125"/><path class="soft-fill" d="M33 77 176 42l135 34-142 38z"/><path ${common} d="m33 77 143-35 135 34-142 38zM176 42v72M33 77v17l139 33 139-34V76" opacity=".65"/><path class="fill" d="M166 71c-4-7-14-7-18-1-3 5 1 9 6 11l-10 14 7 4 13-12 8 12 8-4-11-19c7-5 6-13-1-15l-4 10-6-3z"/><circle class="soft-fill" cx="158" cy="62" r="6"/><path ${common} d="m192 59 20-5m-19 7 17 9M91 62l16-4m-16 7 16 5" opacity=".48"/></svg>`,
+gym:`<svg viewBox="0 0 340 125" aria-hidden="true"><rect class="scene-bg" width="340" height="125"/><path ${common} d="M0 98h340M36 29v69m270-69v69M49 40h45m152 0h45" opacity=".35"/><rect class="soft-fill" x="68" y="51" width="96" height="10" rx="5"/><path ${common} d="M83 62v27m66-27v27m-77 0h89M186 89h88m-76-10v10m63-10v10"/><path class="fill" d="M185 48h13v36h-13zm76 0h13v36h-13zM176 55h8v23h-8zm83 0h8v23h-8z"/><path ${common} d="M218 73c-2-13 1-25 9-29 8 4 11 16 9 29m-18-10h18m-9-19v32"/><circle class="soft-fill" cx="227" cy="35" r="7"/></svg>`,
+court:`<svg viewBox="0 0 340 125" aria-hidden="true"><rect class="scene-bg" width="340" height="125"/><path class="soft-fill" d="M25 25h290v79H25z"/><path ${common} d="M25 25h290v79H25zM170 25v79m-71 0V80a19 19 0 0 1 38 0v24m-38-25h38m82 25V80a19 19 0 0 1 38 0v24m-38-25h38M170 25v79"/><path ${common} d="M13 54h12m-12 20h12m290-20h12m-12 20h12"/><circle class="fill" cx="170" cy="65" r="3"/></svg>`,
+pingpong:`<svg viewBox="0 0 340 125" aria-hidden="true"><rect class="scene-bg" width="340" height="125"/><path ${common} d="M35 18v78M83 22v73m-48-57h48m-48 24h48m161-49v82m48-82v82m-48-59h48m-48 24h48" opacity=".45"/><path class="soft-fill" d="m74 61 116-23 77 18-118 26z"/><path class="fill" d="m74 58 116-22 77 18-118 23z"/><path ${common} d="m74 58 116-22 77 18-118 23zm75 14v28m78-43v28m-140-9 62 17m77-33 60 15m-152 10 78-14"/><path ${common} d="M187 39v25"/><circle class="fill" cx="222" cy="43" r="3"/><path ${common} d="m209 32 8-7 8 4"/></svg>`,
+pavilion:(half)=>`<svg viewBox="0 0 340 125" aria-hidden="true"><rect class="scene-bg" width="340" height="125"/><path class="soft-fill" d="M49 43h242v64H49z"/><path class="fill" d="M31 43 170 13l139 30-15 7-124-26L46 50z" opacity=".75"/><path ${common} d="m31 43 139-30 139 30M49 46v61h242V46M66 107V52m208 55V52"/><path ${common} d="M170 49v58M91 63h78v34H91zm80 0h78v34h-78z" opacity=".7"/><path class="fill" d="${half==='A'?'M91 63h78v34H91z':half==='B'?'M171 63h78v34h-78z':'M91 63h158v34H91z'}" opacity=".17"/><text x="130" y="85" text-anchor="middle" fill="currentColor" font-size="13" font-weight="700">A</text><text x="210" y="85" text-anchor="middle" fill="currentColor" font-size="13" font-weight="700">B</text></svg>`,
+padel:`<svg viewBox="0 0 340 125" aria-hidden="true"><rect class="scene-bg" width="340" height="125"/><path class="soft-fill" d="M77 22h186v85H77z"/><path ${common} d="M77 22h186v85H77zM92 36h156v57H92zM170 36v57m-78-29h156"/><path ${common} d="M77 22 54 37v56l23 14m186-85 23 15v55l-23 15M54 37h23m186 0h23" opacity=".55"/><path class="fill" d="M164 63h12v3h-12z"/><circle class="soft-fill" cx="146" cy="56" r="3"/></svg>`,
+football:`<svg viewBox="0 0 340 125" aria-hidden="true"><rect class="scene-bg" width="340" height="125"/><path class="soft-fill" d="M28 22h284v83H28z"/><path ${common} d="M28 22h284v83H28zM170 22v83m-142-41h284m-215 41V83a24 24 0 0 1 48 0v22m-48-23h48m128 23V83a24 24 0 0 1 48 0v22m-48-23h48M34 53h21v21H34zm251 0h21v21h-21z"/><circle ${common} cx="170" cy="63" r="14"/><circle class="fill" cx="170" cy="63" r="2.6"/></svg>`};
+return (typeof scenes[type]==='function'?scenes[type](half):scenes[type])||scenes.tatami}
+function drawDays(){const wrap=$('dias'),base=parseDay(selectedDate);wrap.innerHTML='';let added=0,offset=0;while(added<8&&offset<16){const d=new Date(base);d.setDate(base.getDate()+offset++);if([0,6].includes(d.getDay()))continue;added++;const key=dateKey(d),b=document.createElement('button');b.type='button';b.className='day-card'+(key===selectedDate?' selected':'');b.setAttribute('aria-pressed',key===selectedDate?'true':'false');b.innerHTML=`<span class="day-label">${key===dateKey(new Date())?'Hoy':new Intl.DateTimeFormat('es-ES',{weekday:'short'}).format(d).replace('.','')}</span><span class="day-number">${d.getDate()}</span>`;b.onclick=()=>setDay(key);wrap.append(b)}}
+function setDay(key){selectedDate=key;$('fecha').value=key;drawDays();render()}
+function slotButton(esp,f){const info=buscarReserva(selectedDate,esp.id,f.inicio,f.fin),b=document.createElement('button'),hour=`${hhmm(f.inicio)}–${hhmm(f.fin)}`;b.type='button';b.className='slot';const time=document.createElement('span');time.className='slot-hour';time.textContent=hour;b.append(time);if(!info){b.classList.add('free');b.setAttribute('aria-label',`${esp.nombre}, ${hour}, libre. Reservar`);b.onclick=()=>openBooking(esp,f);return b}const r=info.reserva,mine=info.directa&&r.profesor===usuario;b.classList.add(info.directa?(mine?'mine':'busy'):'locked');b.title=info.directa?`${r.profesor} · ${r.grupo||'Sin grupo'}`:`Bloqueado por ${roomDef(r.espacio)?.nombre||'otra reserva'}`;b.setAttribute('aria-label',`${esp.nombre}, ${hour}, ${b.title}`);const who=document.createElement('span');who.className='slot-who';who.textContent=info.directa?`${mine?'Tú':r.profesor}${r.grupo?' · '+r.grupo:''}`:'Pabellón';b.append(who);return b}
+function renderSpaces(){const cont=$('espacios');cont.innerHTML='';$('count-spaces').textContent=ESPACIOS.length;const fr=generarFranjas($('etapa').value==='primaria'?60:55);for(const [idx,esp] of ESPACIOS.entries()){const card=document.createElement('article');card.className='space-card';card.style.setProperty('--accent',esp.color);card.style.setProperty('--tint',esp.tinte);card.style.animationDelay=`${Math.min(idx*35,350)}ms`;const artWrap=document.createElement('div');artWrap.className='space-art';artWrap.innerHTML=(esp.tipo==='halfA'||esp.tipo==='halfB')?art('pavilion',esp.tipo==='halfA'?'A':'B'):art(esp.tipo);card.append(artWrap);const body=document.createElement('div');body.className='space-content';const titleRow=document.createElement('div');titleRow.className='space-title-row';const title=document.createElement('h3');title.className='space-title';title.textContent=esp.nombre;const badge=document.createElement('span');badge.className='today-badge'+(countToday(esp)?' has-booking':'');badge.innerHTML=`<i></i>${countToday(esp)?`${countToday(esp)} hoy`:'Libre hoy'}`;titleRow.append(title,badge);const meta=document.createElement('p');meta.className='space-meta';meta.textContent=esp.detalle;const slots=document.createElement('div');slots.className='slots';for(const f of fr)slots.append(slotButton(esp,f));body.append(titleRow,meta,slots);card.append(body);cont.append(card)}}
+function renderMine(){const wrap=$('mis-view');wrap.innerHTML='';const mine=Object.values(reservas).filter(r=>r&&r.profesor===usuario).sort((a,b)=>(a.fecha||'').localeCompare(b.fecha||'')||a.inicio-b.inicio);$('my-count').textContent=mine.length;$('my-count').hidden=!mine.length;if(!mine.length){const empty=document.createElement('div');empty.className='empty-state';empty.textContent=usuario?'Todavía no tienes reservas. Elige una hora libre para empezar.':'Añade tu nombre en la parte superior y reserva tu primera clase.';wrap.append(empty);return}for(const r of mine){const esp=roomDef(r.espacio),row=document.createElement('div');row.className='mine-card';const details=document.createElement('div');details.innerHTML=`<strong>${esc(esp?.nombre||r.espacio)}</strong><small>${esc(fechaBonita(r.fecha))} · ${hhmm(r.inicio)}–${hhmm(r.fin)} · ${esc(r.grupo||'Sin grupo')}</small>`;const cancel=document.createElement('button');cancel.type='button';cancel.className='cancel-booking';cancel.textContent='Anular';cancel.onclick=()=>anular(r);row.append(details,cancel);wrap.append(row)}}
+function render(){renderSpaces();renderMine();const mineView=vista==='mine';$('mis-view').hidden=!mineView;$('espacios').hidden=mineView;document.querySelectorAll('.nav-item').forEach(b=>b.classList.toggle('active',b.dataset.tab===(mineView?'mine':'spaces')));$('usuario').querySelector('.profile-name').textContent=usuario||'¿Quién eres?'}
+function openBooking(esp,f){if(!usuario){toast('Antes de reservar, añade tu nombre en la parte superior.');$('usuario').focus();return}if(conflicts(selectedDate,esp,f)){toast('Esa hora ya no está disponible. Actualizando la agenda.');render();return}seleccion={esp,f};$('modal-titulo').textContent=esp.nombre;$('modal-detalle').textContent=`${fechaBonita(selectedDate)} · ${hhmm(f.inicio)} – ${hhmm(f.fin)} · ${$('etapa').value==='primaria'?'60':'55'} min`;$('nombre').value=usuario;$('grupo').value=localStorage.getItem(ST_GROUP)||'';$('modal').classList.remove('oculto');setTimeout(()=>$('grupo').focus(),150)}
+function closeBooking(){$('modal').classList.add('oculto');seleccion=null}
+function saveLocal(){localStorage.setItem(ST_LOCAL,JSON.stringify(reservas))}
+function askName(){const val=prompt('¿Cómo te llamas? Tu nombre será visible para el equipo.',usuario);if(val===null)return;const clean=val.trim().slice(0,50);if(!clean){toast('Escribe un nombre para poder identificar tus reservas.');return}usuario=clean;localStorage.setItem(ST_USER,usuario);render();toast(`¡Hola, ${esc(usuario)}! Ya puedes reservar.`)}
+function reservar(){if(!seleccion)return;const name=$('nombre').value.trim().slice(0,50),group=$('grupo').value.trim().slice(0,40);if(!name){$('nombre').focus();toast('Escribe tu nombre para confirmar la reserva.');return}if(!group){$('grupo').focus();toast('Indica el grupo o clase.');return}const{esp,f}=seleccion,date=selectedDate;if(conflicts(date,esp,f)){closeBooking();toast('Esa hora acaba de ser reservada.');render();return}usuario=name;localStorage.setItem(ST_USER,usuario);localStorage.setItem(ST_GROUP,group);const record={fecha:date,espacio:esp.id,inicio:f.inicio,fin:f.fin,profesor:usuario,grupo,creada:Date.now()},id=`${date}_${esp.id}_${f.inicio}`;if(modo==='firebase'){db.ref('reservas').transaction(current=>{const tree=current||{};const hasConflict=Object.values(tree).some(r=>{if(!r||r.fecha!==date||Number(r.inicio)>=f.fin||Number(r.fin)<=f.inicio)return false;const existing=roomDef(r.espacio);return r.espacio===esp.id||(existing&&existing.bloquea.includes(esp.id))});if(hasConflict)return;tree[id]=record;return tree},(error,committed)=>{if(error){toast('No se pudo guardar. Comprueba la conexión y vuelve a intentarlo.');return}if(!committed){toast('Esa hora ya está ocupada.');return}toast(`Reserva confirmada: <strong>${esc(esp.nombre)}</strong>, ${hhmm(f.inicio)}–${hhmm(f.fin)}.`)})}else{reservas[id]=record;saveLocal();toast(`Reserva guardada en este dispositivo: <strong>${esc(esp.nombre)}</strong>.`)}closeBooking();render()}
+function anular(r){if(r.profesor!==usuario)return;const room=roomDef(r.espacio);if(!confirm(`¿Anular tu reserva de ${room?.nombre||r.espacio} el ${fechaBonita(r.fecha)}?`))return;const id=`${r.fecha}_${r.espacio}_${r.inicio}`;if(modo==='firebase')db.ref('reservas/'+id).remove().then(()=>toast('Reserva anulada.')).catch(()=>toast('No se pudo anular. Revisa tu conexión.'));else{delete reservas[id];saveLocal();render();toast('Reserva anulada.')}}
+function notification(r){if(!r||r.profesor===usuario)return;const esp=roomDef(r.espacio);toast(`<strong>${esc(r.profesor)}</strong> ha reservado <strong>${esc(esp?.nombre||r.espacio)}</strong> el ${esc(fechaBonita(r.fecha))} de ${hhmm(r.inicio)} a ${hhmm(r.fin)}${r.grupo?' · '+esc(r.grupo):''}.`)}
+function isConfigured(){const c=window.firebaseConfig;if(!c||typeof c!=='object')return false;const vals=['apiKey','authDomain','databaseURL','projectId','appId'].map(k=>c[k]).filter(Boolean);return vals.some(v=>typeof v==='string'&&!v.includes('PEGA_AQUI')&&!v.includes('TU_')&&v!=='YOUR_API_KEY')&&!!c.apiKey}
+function initData(){if(isConfigured()&&window.firebase?.database){try{firebase.initializeApp(firebaseConfig);db=firebase.database();modo='firebase';db.ref('reservas').on('value',snap=>{const next=snap.val()||{};if(!firstRemote){const prev=reservas;for(const [id,r] of Object.entries(next))if(!prev[id]&&r)notification(r)}reservas=next;firstRemote=false;render()},err=>{$('estado').hidden=false;$('estado').textContent='No se pudo conectar con Firebase. Comprueba la conexión y la configuración.';console.error(err)});$('estado').hidden=true;return}catch(err){console.error('Firebase no disponible; se activa el modo local.',err)}}modo='local';try{reservas=JSON.parse(localStorage.getItem(ST_LOCAL)||'{}')||{}}catch{reservas={}}$('estado').hidden=false;$('estado').innerHTML='<strong>Modo de demostración:</strong> las reservas solo se guardan en este dispositivo y no se comparten. Configura Firebase para sincronizar con el equipo.'}
+function init(){selectedDate=dateKey(new Date());$('fecha').value=selectedDate;drawDays();$('fecha').addEventListener('change',()=>{if($('fecha').value)setDay($('fecha').value)});$('etapa').addEventListener('change',render);$('usuario').addEventListener('click',askName);$('btn-cancelar').addEventListener('click',closeBooking);$('btn-cerrar-x').addEventListener('click',closeBooking);$('btn-reservar').addEventListener('click',reservar);$('modal').addEventListener('click',e=>{if(e.target===$('modal'))closeBooking()});document.addEventListener('keydown',e=>{if(e.key==='Escape')closeBooking()});$('nombre').addEventListener('change',()=>{const n=$('nombre').value.trim();if(n){usuario=n;localStorage.setItem(ST_USER,n)}});document.querySelectorAll('.nav-item').forEach(b=>b.addEventListener('click',()=>{vista=b.dataset.tab;render();if(vista==='mine')document.querySelector('.space-section').scrollIntoView({behavior:'smooth',block:'start'})}));initData();render()}
+init();

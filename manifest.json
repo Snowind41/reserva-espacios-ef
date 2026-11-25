@@ -1,9 +1,13 @@
 {
-  "name": "Reserva de espacios EF",
+  "name": "Espacios EF · Reserva de espacios",
   "short_name": "Espacios EF",
+  "description": "Reserva de espacios de Educación Física del centro.",
   "start_url": "./index.html",
+  "scope": "./",
   "display": "standalone",
-  "background_color": "#f2f4f8",
-  "theme_color": "#1565c0",
-  "icons": []
+  "background_color": "#f7f7f0",
+  "theme_color": "#173f35",
+  "icons": [
+    {"src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable"}
+  ]
 }
